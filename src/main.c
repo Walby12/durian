@@ -2,23 +2,21 @@
 #include <stdlib.h>
 #include <string.h>
 #include <ctype.h>
+#include <stdbool.h>
 
 enum Tokens {
-    ADD,
-    SUB,
-    PUSH,
-    POP
+  ADD,
+  SUB,
+  PUSH,
+  POP
 };
 
-/* Structure that is meant to desciribe the virtual machine */
 struct Durian {
   int index;
   int line;
   int pc;
 };
 
-/* Function that takes a string a count and a pointer to the vm and returns an array of Tokens 
- * NOTE: The count is only useful for printing the token array */
 enum Tokens* tokenize(const char *src, int *count, struct Durian *dur) {
   int len = strlen(src);
   enum Tokens *toks = malloc(len * sizeof(enum Tokens));
@@ -53,7 +51,7 @@ enum Tokens* tokenize(const char *src, int *count, struct Durian *dur) {
         toks[t++] = POP;
         dur->index++;
       } else {
-        printf("Unrecognized string: %s at token: %d at line: %d", str, dur->index+1, dur->line+1);
+        printf("Unrecognized string: %s (token: %d ,line: %d)\n", str, dur->index+1, dur->line+1);
         return NULL;
       }
     } else if (c == '\n') {
@@ -61,7 +59,12 @@ enum Tokens* tokenize(const char *src, int *count, struct Durian *dur) {
       dur->pc++;
       dur->index = 0;
     } else {
-      dur->pc++;
+      if (!isspace(c)) {
+        printf("Unrecognized char: %c (token number: %d ,line: %d)\n", c, dur->index+1, dur->line+1);
+        return NULL;
+      } else {
+        dur->pc++;
+      }
     }
   }
 
@@ -69,18 +72,39 @@ enum Tokens* tokenize(const char *src, int *count, struct Durian *dur) {
   return toks;
 }
 
-/* TODO: Add file reading thru the arguments passed */
-int main() {
-  struct Durian dur = {0, 0, 0};
+int main(int argc, char *argv[]) {
+  char src[1024];
 
-  int count;
-  enum Tokens *toks = tokenize("+ - push pop", &count, &dur);
+  bool cond = false;
 
-  for (int i = 0; i < count; i++) {
-      printf("%d ", toks[i]);
+  if (argc < 2) {
+    printf("Error you did not pass enough arguments\n");
+  } else if (argc == 2) {
+    FILE *f = fopen(argv[1], "r");
+    cond = true;
+    if (f == NULL) {
+      printf("Error could not open file\n"); 
+      return 0;
+    } else {
+      fgets(src, 1024, f);
+      fclose(f);
+    }
+  } else {
+    printf("You passed to many args\n");
   }
-  printf("\n");
 
-  free(toks);
+  if (cond) {
+    struct Durian dur = {0, 0, 0};
+  
+    int count;
+    enum Tokens *toks = tokenize(src, &count, &dur);
+    if (toks == NULL) return 0; 
+    for (int i = 0; i < count; i++) {
+      printf("%d ", toks[i]);
+    }
+    printf("\n");
+
+    free(toks);
+  }
   return 0;
 }
