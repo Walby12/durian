@@ -1,1 +1,2 @@
-+ - push pop
+push 42
+pop + 2
