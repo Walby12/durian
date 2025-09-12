@@ -86,6 +86,24 @@ enum Tokens* tokenize(const char *src, int *count, struct Durian *dur) {
   return toks;
 }
 
+enum Tokens peek_l(enum Tokens *toks, size_t op_count) {
+  if (op_count <= 0) {
+    printf("Tried to peek left but the op_count is <= 0\n");
+    exit(1);
+  }
+  return toks[op_count - 1];
+}
+
+enum Tokens get_cur_tok(enum Tokens* toks, size_t op_count) { 
+  return toks[op_count];
+}
+
+void parse(enum Tokens *toks, struct Durian *dur) {
+  for (size_t op_count = 0; op_count < (size_t) dur->pc; op_count++) {
+    printf("%d\n", get_cur_tok(toks, op_count));
+  }
+}
+
 int main(int argc, char *argv[]) {
   bool cond = false;
   char *src = NULL;
@@ -128,15 +146,12 @@ int main(int argc, char *argv[]) {
       return 0; 
     }
 
-    for (int i = 0; i < count; i++) {
-      printf("%d ", toks[i]);
+    for (int j = 0; j < dur.values; j++) {
+      printf("INTS: %d ", dur.ints[j]);
     }
     printf("\n");
 
-    for (int j = 0; j < dur.values; j++) {
-      printf("%d ", dur.ints[j]);
-    }
-    printf("\n");
+    parse(toks, &dur);
 
     free(toks);
     free(src);
