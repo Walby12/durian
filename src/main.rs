@@ -1,6 +1,8 @@
 use std::process::*;
 use std::env::*;
 use std::fs::*;
+use std::fs::OpenOptions;
+use std::io::Write;
 
 #[derive(Debug, Copy, Clone, PartialEq)]
 enum Tokens {
@@ -9,12 +11,13 @@ enum Tokens {
     Push,
     Pop,
     Int(i64),
+    Newline,
 }
 
 #[derive(Debug)]
 enum Errors {
     PeekLeftOfb,
-    PeekRight,
+    PeekRightOfb,
     OutOfBounds
 }
 
@@ -67,6 +70,8 @@ fn tokenize(src: String, dur: &mut Durian) -> Vec<Tokens> {
             c if c.is_whitespace() => {
                 if c == '\n' {
                     dur.line += 1;
+                    dur.token = 0;
+                    tokens.push(Tokens::Newline);
                 }
                 i += 1;
             }
@@ -90,8 +95,8 @@ fn peek_l(tokens: &Vec<Tokens>, index: &usize) -> Result<Tokens, Errors> {
 }
 
 fn peek_r(tokens: &Vec<Tokens>, index: &usize) -> Result<Tokens, Errors> {
-    if *index == 0 {
-        return Err(Errors::PeekLeftOfb);
+    if *index == tokens.len() {
+        return Err(Errors::PeekRightOfb);
     }
 
     let i = (*index + 1) as usize;
@@ -99,17 +104,28 @@ fn peek_r(tokens: &Vec<Tokens>, index: &usize) -> Result<Tokens, Errors> {
     Ok(tokens[i])
 }
 
-fn build_program(tokens: &Vec<Tokens>, dur: &mut Durian) {
+fn build_program(tokens: &Vec<Tokens>, dur: &mut Durian, file_path: String) {
     let mut string_builder: String = String::new();
     let mut index: usize = 0;
     let mut tok = 0;
     let mut line = 1;
+    let mut msg = String::new();
+
+    let mut file = OpenOptions::new()
+        .create(true)
+        .write(true)
+        .open(file_path)
+        .unwrap();
+
+    msg.push_str(&format!("format ELF64 executable\nentry start\nstart:\n"));
 
     while index < tokens.len() {
         let c = tokens[index];
 
         match c {
             Tokens::Add => {
+                tok += 1;
+
                 let l = match peek_l(&tokens, &index) {
                     Ok(t) => t,
                     Err(_) => { 
@@ -118,15 +134,60 @@ fn build_program(tokens: &Vec<Tokens>, dur: &mut Durian) {
                     }
                 };
                 
-                if matches!(l, Tokens::Int(_)) || matches!(l, Tokens::Pop) {
+                if !matches!(l, Tokens::Int(_)) || matches!(l, Tokens::Pop) {
                     eprintln!("Error got token: {:?}, but expected an int or a pop op.\nError occurred at token {} at line {}", l, tok, line);
                     exit(1);
                 }
                 
+                let r = match peek_r(&tokens, &index) {
+                    Ok(t) => t,
+                    Err(_) => {
+                        eprintln!("Tried to peek the token next to the plus op at token {} at line {} but went out of bounds", tok + 1, line); 
+                        exit(1); 
+                    }
+                };
+
+                if !matches!(r, Tokens::Int(_)) {
+                    eprintln!("Error got token: {:?}, but expected an int.\nError occurred at token {} at line {}", r, tok + 1, line);
+                    exit(1);
+                }
+                
+                
             }
+            Tokens::Push => {
+                tok += 1;
+                
+                let r = match peek_r(&tokens, &index) {
+                    Ok(t) => t,
+                    Err(_) => {
+                        eprintln!("Tried to peek the token next to the push op at token {} at line {} but went out of bounds", tok + 1, line); 
+                        exit(1); 
+                    }
+                };
+
+                if !matches!(r, Tokens::Int(..)) {
+                    eprintln!("Error got token: {:?}, but expected an Int.\nError occurred at token {} at line {}", r, tok + 1, line);
+                    exit(1);
+                }
+
+                if let Tokens::Int(n) = r {
+                    msg.push_str(&format!("\tpush {}\n", n));
+                }
+                index += 1;
+            }
+            Tokens::Pop => {
+                msg.push_str(&format!("\tpop rbx\n"));
+            }
+            Tokens::Newline => {
+                line += 1;
+                tok = 0;
+            }
+            _ => todo!()
         }
         index += 1;
     }
+    msg.push_str(&format!("\tmov rax, 60\n\txor rdi, rdi\n\tsyscall\n"));
+    writeln!(file, "{}", msg);
 }
 
 fn main() {
@@ -137,7 +198,7 @@ fn main() {
     
     let args: Vec<String> = args().collect();
 
-    if args.len() < 2 {
+    if args.len() < 3 {
         eprintln!("You did not pass enough args");
         exit(1);
     }
@@ -153,4 +214,5 @@ fn main() {
 
     let toks = tokenize(src, &mut dur);
     println!("{:?}", toks);
+    build_program(&toks, &mut dur, args[2].clone());
 }
