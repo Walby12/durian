@@ -3,6 +3,8 @@ use std::env::*;
 use std::fs::*;
 use std::fs::OpenOptions;
 use std::io::Write;
+use std::path::Path;
+use std::process::Command;
 
 #[derive(Debug, Copy, Clone, PartialEq)]
 enum Tokens {
@@ -106,16 +108,18 @@ fn peek_r(tokens: &Vec<Tokens>, index: &usize) -> Result<Tokens, Errors> {
     Ok(tokens[i])
 }
 
-fn build_program(tokens: &Vec<Tokens>, dur: &mut Durian, file_path: String) {
+fn build_program(tokens: &Vec<Tokens>, file_path: String) {
     let mut string_builder: String = String::new();
     let mut index: usize = 0;
     let mut tok = 0;
     let mut line = 1;
     let mut msg = String::new();
+    let mut stack_all = 0;
 
     let mut file = OpenOptions::new()
         .create(true)
         .write(true)
+        .truncate(true)
         .open(file_path)
         .unwrap();
 
@@ -135,6 +139,7 @@ fn build_program(tokens: &Vec<Tokens>, dur: &mut Durian, file_path: String) {
                 msg.push_str("\tpop rbx\n");
                 msg.push_str("\tadd rax, rbx\n");
                 msg.push_str("\tpush rax\n");
+                stack_all -= 8;
             }
             Tokens::Push => {
                 tok += 1;
@@ -165,20 +170,26 @@ fn build_program(tokens: &Vec<Tokens>, dur: &mut Durian, file_path: String) {
                 }
 
                 index += 1;
+                stack_all += 8;
             }
             Tokens::Pop => {
                 tok += 1;
                 msg.push_str("\tpop rbx\n");
+                stack_all -= 8;
             }
             Tokens::Newline => {
                 line += 1;
                 tok = 0;
             }
             Tokens::Print => {
+                stack_all -= 8;
+                if stack_all % 16 != 0 {
+                    eprintln!("The stack may be misalligned and the program may go into a seg fault for this print call.\nWarinig emitted at token: {} at line: {}", tok + 1, line);
+                }
                 msg.push_str(&format!("\tmov rdi, fmt\n\tpop rax\n\tadd rax, '0'\n\tmov rsi, rax\n\txor eax, eax\n\tcall printf\n"))
             }
             _ => {
-                eprintln!("Unexpected token {:?} at token: {} at line {}", c, tok, line);
+                eprintln!("Unexpected token {:?} at token: {} at line {}", c, tok + 1, line);
                 exit(1);
             }
         }
@@ -189,6 +200,34 @@ fn build_program(tokens: &Vec<Tokens>, dur: &mut Durian, file_path: String) {
     writeln!(file, "{}", msg).unwrap();
 }
 
+fn strip_end(filename: String) -> String {
+    let path = Path::new(&filename);
+    match path.file_stem() {
+        Some(stem) => stem.to_string_lossy().into_owned(),
+        None => filename,
+    }
+}
+
+fn exec_program(file_path: String) {
+    let mut arg2 = strip_end(file_path.clone());
+    arg2.push_str(".o");
+    let arg3 = strip_end(file_path.clone());
+
+    let comm_1 = Command::new("fasm")
+        .arg(file_path)
+        .arg(arg2.clone())
+        .status()
+        .expect("Could not run fasm command");
+    
+    let comm_2 = Command::new("gcc")
+        .arg("-no-pie")
+        .arg(arg2)
+        .arg("-o")
+        .arg(arg3)
+        .status()
+        .expect("Could not run gcc command");
+}
+
 fn main() {
     let mut dur = Durian {
         token: 1,
@@ -196,10 +235,21 @@ fn main() {
     };
     
     let args: Vec<String> = args().collect();
+    let mut out_file_name = String::new();
 
-    if args.len() < 3 {
+    if args.len() < 2 {
         eprintln!("You did not pass enough args");
         exit(1);
+    } else if args.len() == 2 {
+        out_file_name = strip_end(args[1].clone());
+        out_file_name.push_str(".s");
+    } else if args.len() == 3 {
+        out_file_name = strip_end(args[2].clone());
+        if out_file_name != args[2].clone() {
+            eprintln!("Invalid output name: {}", args[2].clone());
+            exit(1);
+        }
+        out_file_name.push_str(".s");
     }
 
     let file_name = args[1].clone();
@@ -212,6 +262,6 @@ fn main() {
     };
 
     let toks = tokenize(src, &mut dur);
-    println!("{:?}", toks);
-    build_program(&toks, &mut dur, args[2].clone());
+    build_program(&toks, out_file_name.clone());
+    exec_program(out_file_name);
 }

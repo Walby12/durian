@@ -6,7 +6,7 @@ public main
 extrn printf
 main:
 	push 2
-	push 3
+	push 4
 	pop rax
 	pop rbx
 	add rax, rbx
