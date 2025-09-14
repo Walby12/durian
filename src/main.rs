@@ -11,6 +11,7 @@ enum Tokens {
     Push,
     Pop,
     Int(i64),
+    Print,
     Newline,
 }
 
@@ -36,8 +37,6 @@ fn tokenize(src: String, dur: &mut Durian) -> Vec<Tokens> {
         let c = chars[i];
 
         match c {
-            '+' => { tokens.push(Tokens::Add); i += 1; dur.token += 1; }
-            '-' => { tokens.push(Tokens::Sub); i += 1; dur.token += 1; }
             c if c.is_alphabetic() => {
                 let mut string: String = String::new();
                 
@@ -49,6 +48,9 @@ fn tokenize(src: String, dur: &mut Durian) -> Vec<Tokens> {
                 match string.as_str() {
                     "push" => { tokens.push(Tokens::Push); dur.token += 1; }
                     "pop" => { tokens.push(Tokens::Pop); dur.token += 1; }
+                    "add" => { tokens.push(Tokens::Add); dur.token += 1; }
+                    "sub" => { tokens.push(Tokens::Sub); dur.token += 1; }
+                    "print" => { tokens.push(Tokens::Print); dur.token += 1; }
                     _ => { eprintln!("Unrecognized string: {} at token: {:?} at line: {:?}", string, dur.token, dur.line); exit(1); }
                 }
             }
@@ -63,7 +65,7 @@ fn tokenize(src: String, dur: &mut Durian) -> Vec<Tokens> {
                 let num = string.parse::<i64>();
 
                 match num {
-                    Ok(n) => { tokens.push(Tokens::Int(n)); dur.token += 1; }
+                    Ok(n) => { tokens.push(Tokens::Int(n)); }
                     Err(e) => { eprintln!("Could not parse int: {}, error: {}", string, e); exit(1); }
                 }
             }
@@ -117,7 +119,10 @@ fn build_program(tokens: &Vec<Tokens>, dur: &mut Durian, file_path: String) {
         .open(file_path)
         .unwrap();
 
-    msg.push_str(&format!("format ELF64 executable\nentry start\nstart:\n"));
+    msg.push_str("format ELF64\n");
+    msg.push_str("section \".data\" writable\n\tfmt db \"%c\", 10, 0\n");
+    msg.push_str("section \".text\" executable\n");
+    msg.push_str("public main\nextrn printf\nmain:\n");
 
     while index < tokens.len() {
         let c = tokens[index];
@@ -126,68 +131,62 @@ fn build_program(tokens: &Vec<Tokens>, dur: &mut Durian, file_path: String) {
             Tokens::Add => {
                 tok += 1;
 
-                let l = match peek_l(&tokens, &index) {
-                    Ok(t) => t,
-                    Err(_) => { 
-                        eprintln!("Tried to peek the token previous to the plus op at token {} at line {} but went out of bounds", tok, line); 
-                        exit(1); 
-                    }
-                };
-                
-                if !matches!(l, Tokens::Int(_)) || matches!(l, Tokens::Pop) {
-                    eprintln!("Error got token: {:?}, but expected an int or a pop op.\nError occurred at token {} at line {}", l, tok, line);
-                    exit(1);
-                }
-                
-                let r = match peek_r(&tokens, &index) {
-                    Ok(t) => t,
-                    Err(_) => {
-                        eprintln!("Tried to peek the token next to the plus op at token {} at line {} but went out of bounds", tok + 1, line); 
-                        exit(1); 
-                    }
-                };
-
-                if !matches!(r, Tokens::Int(_)) {
-                    eprintln!("Error got token: {:?}, but expected an int.\nError occurred at token {} at line {}", r, tok + 1, line);
-                    exit(1);
-                }
-                
-                
+                msg.push_str("\tpop rax\n");
+                msg.push_str("\tpop rbx\n");
+                msg.push_str("\tadd rax, rbx\n");
+                msg.push_str("\tpush rax\n");
             }
             Tokens::Push => {
                 tok += 1;
-                
+
                 let r = match peek_r(&tokens, &index) {
                     Ok(t) => t,
                     Err(_) => {
-                        eprintln!("Tried to peek the token next to the push op at token {} at line {} but went out of bounds", tok + 1, line); 
-                        exit(1); 
+                        eprintln!(
+                            "Tried to peek the token next to the push op at token {} at line {} but went out of bounds",
+                            tok + 1, line
+                        );
+                        exit(1);
                     }
                 };
 
                 if !matches!(r, Tokens::Int(..)) {
-                    eprintln!("Error got token: {:?}, but expected an Int.\nError occurred at token {} at line {}", r, tok + 1, line);
+                    eprintln!(
+                        "Error got token: {:?}, but expected an Int.\nError occurred at token {} at line {}",
+                        r,
+                        tok + 1,
+                        line
+                    );
                     exit(1);
                 }
 
                 if let Tokens::Int(n) = r {
                     msg.push_str(&format!("\tpush {}\n", n));
                 }
+
                 index += 1;
             }
             Tokens::Pop => {
-                msg.push_str(&format!("\tpop rbx\n"));
+                tok += 1;
+                msg.push_str("\tpop rbx\n");
             }
             Tokens::Newline => {
                 line += 1;
                 tok = 0;
             }
-            _ => todo!()
+            Tokens::Print => {
+                msg.push_str(&format!("\tmov rdi, fmt\n\tpop rax\n\tadd rax, '0'\n\tmov rsi, rax\n\txor eax, eax\n\tcall printf\n"))
+            }
+            _ => {
+                eprintln!("Unexpected token {:?} at token: {} at line {}", c, tok, line);
+                exit(1);
+            }
         }
         index += 1;
     }
-    msg.push_str(&format!("\tmov rax, 60\n\txor rdi, rdi\n\tsyscall\n"));
-    writeln!(file, "{}", msg);
+
+    msg.push_str("\txor eax, eax\n\tret\n");
+    writeln!(file, "{}", msg).unwrap();
 }
 
 fn main() {

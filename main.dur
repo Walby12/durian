@@ -1,2 +1,2 @@
-push 43
-pop
+push 2 push 3 add
+print
