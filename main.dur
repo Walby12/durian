@@ -1,1 +1,1 @@
-push 2 push 4 add print
+push 8 printint

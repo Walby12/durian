@@ -10,10 +10,17 @@ use std::process::Command;
 enum Tokens {
     Add,
     Sub,
+    Div,
+    IDiv,
+    IMul,
+    Mul,
+    Mod,
+    Dup,
     Push,
     Pop,
+    Swap,
     Int(i64),
-    Print,
+    PrintInt,
     Newline,
 }
 
@@ -52,7 +59,14 @@ fn tokenize(src: String, dur: &mut Durian) -> Vec<Tokens> {
                     "pop" => { tokens.push(Tokens::Pop); dur.token += 1; }
                     "add" => { tokens.push(Tokens::Add); dur.token += 1; }
                     "sub" => { tokens.push(Tokens::Sub); dur.token += 1; }
-                    "print" => { tokens.push(Tokens::Print); dur.token += 1; }
+                    "div" => { tokens.push(Tokens::Div); dur.token += 1; }
+                    "idiv" => { tokens.push(Tokens::IDiv); dur.token += 1; }
+                    "imul" => { tokens.push(Tokens::IMul); dur.token += 1; }
+                    "mul" => { tokens.push(Tokens::Mul); dur.token += 1; }
+                    "swap" => { tokens.push(Tokens::Swap); dur.token += 1; }
+                    "mod" => { tokens.push(Tokens::Mod); dur.token += 1; }
+                    "dup" => { tokens.push(Tokens::Dup); dur.token += 1; }
+                    "printint" => { tokens.push(Tokens::PrintInt); dur.token += 1; }
                     _ => { eprintln!("Unrecognized string: {} at token: {:?} at line: {:?}", string, dur.token, dur.line); exit(1); }
                 }
             }
@@ -124,7 +138,7 @@ fn build_program(tokens: &Vec<Tokens>, file_path: String) {
         .unwrap();
 
     msg.push_str("format ELF64\n");
-    msg.push_str("section \".data\" writable\n\tfmt db \"%c\", 10, 0\n");
+    msg.push_str("section \".data\" writable\n\tfmt db \"%d\", 10, 0\n");
     msg.push_str("section \".text\" executable\n");
     msg.push_str("public main\nextrn printf\nmain:\n");
 
@@ -140,6 +154,80 @@ fn build_program(tokens: &Vec<Tokens>, file_path: String) {
                 msg.push_str("\tadd rax, rbx\n");
                 msg.push_str("\tpush rax\n");
                 stack_all -= 8;
+            }
+            Tokens::Sub => {
+                tok += 1;
+
+                msg.push_str("\tpop rax\n");
+                msg.push_str("\tpop rbx\n");
+                msg.push_str("\tsub rax, rbx\n");
+                msg.push_str("\tpush rax\n");
+                stack_all -= 8;
+            }
+            Tokens::Div => {
+                tok += 1;
+                
+                msg.push_str("\tpop rax\n");
+                msg.push_str("\tpop rbx\n");
+                msg.push_str("\txor rdx, rdx\n");
+                msg.push_str("\tdiv rbx\n");
+                msg.push_str("\tpush rax\n");
+                stack_all -= 8;
+            }
+            Tokens::IDiv => {
+                tok += 1;
+
+                msg.push_str("\tpop rax\n");
+                msg.push_str("\tpop rbx\n");
+                msg.push_str("\tcqo\n");
+                msg.push_str("\tidiv rbx\n");
+                msg.push_str("\tpush rax\n");
+                stack_all -= 8;
+            }
+            Tokens::Mul => {
+                tok += 1;
+
+                msg.push_str("\tpop rax\n");
+                msg.push_str("\tpop rbx\n");
+                msg.push_str("\txor rdx, rdx\n");
+                msg.push_str("\tmul rbx\n");
+                msg.push_str("\tpush rax\n");
+                stack_all -= 8;
+            }
+            Tokens::IMul => {
+                tok += 1;
+
+                msg.push_str("\tpop rax\n");
+                msg.push_str("\tpop rbx\n");
+                msg.push_str("\tcqo\n");
+                msg.push_str("\timul rbx\n");
+                msg.push_str("\tpush rax\n");
+                stack_all -= 8;
+            }
+            Tokens::Mod => {
+                tok += 1;
+                
+                msg.push_str("\tpop rax\n");
+                msg.push_str("\tpop rbx\n");
+                msg.push_str("\tcqo\n");
+                msg.push_str("\tidiv rbx\n");
+                msg.push_str("\tpush rdx\n");
+                stack_all -= 8;
+            }
+            Tokens::Swap => {
+                tok += 1;
+
+                msg.push_str("\tpop rax\n");
+                msg.push_str("\tpop rbx\n");
+                msg.push_str("\tpush rax\n");
+                msg.push_str("\tpush rbx\n");
+            }
+            Tokens::Dup => {
+                tok += 1;
+
+                msg.push_str("\tmov rax, [rsp]\n");
+                msg.push_str("\tpush rax\n");
+                stack_all += 8;
             }
             Tokens::Push => {
                 tok += 1;
@@ -181,12 +269,12 @@ fn build_program(tokens: &Vec<Tokens>, file_path: String) {
                 line += 1;
                 tok = 0;
             }
-            Tokens::Print => {
+            Tokens::PrintInt => {
                 stack_all -= 8;
                 if stack_all % 16 != 0 {
                     eprintln!("The stack may be misalligned and the program may go into a seg fault for this print call.\nWarinig emitted at token: {} at line: {}", tok + 1, line);
                 }
-                msg.push_str(&format!("\tmov rdi, fmt\n\tpop rax\n\tadd rax, '0'\n\tmov rsi, rax\n\txor eax, eax\n\tcall printf\n"))
+                msg.push_str(&format!("\tmov rdi, fmt\n\tpop rsi\n\txor eax, eax\n\tcall printf\n"))
             }
             _ => {
                 eprintln!("Unexpected token {:?} at token: {} at line {}", c, tok + 1, line);

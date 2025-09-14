@@ -1,20 +1,17 @@
 format ELF64
 section ".data" writable
-	fmt db "%c", 10, 0
+	fmt db "%d", 10, 0
 section ".text" executable
 public main
 extrn printf
 main:
+	push 8
 	push 2
-	push 4
-	pop rax
-	pop rbx
-	add rax, rbx
+	mov rax, [rsp]
 	push rax
+	push 2
 	mov rdi, fmt
-	pop rax
-	add rax, '0'
-	mov rsi, rax
+	pop rsi
 	xor eax, eax
 	call printf
 	xor eax, eax
