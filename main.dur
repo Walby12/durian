@@ -1,1 +1,1 @@
-push 69 printint
+label u push 69 putchar jmp u

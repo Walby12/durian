@@ -4,14 +4,15 @@ section ".data" writable
 section ".text" executable
 public main
 extrn printf
+extrn putchar
 main:
+u:
 	push 69
-	mov rdi, fmt
-	pop rsi
-	xor eax, eax
+	pop rdi
 	sub rsp, 8
-	call printf
+	call putchar
 	add rsp, 8
+jmp u
 	xor eax, eax
 	ret
 
