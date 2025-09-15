@@ -129,6 +129,7 @@ fn build_program(tokens: &Vec<Tokens>, file_path: String) {
     let mut line = 1;
     let mut msg = String::new();
     let mut stack_all = 0;
+    let mut seg_fault = 0;
 
     let mut file = OpenOptions::new()
         .create(true)
@@ -154,6 +155,7 @@ fn build_program(tokens: &Vec<Tokens>, file_path: String) {
                 msg.push_str("\tadd rax, rbx\n");
                 msg.push_str("\tpush rax\n");
                 stack_all -= 8;
+                seg_fault -= 1;
             }
             Tokens::Sub => {
                 tok += 1;
@@ -163,6 +165,7 @@ fn build_program(tokens: &Vec<Tokens>, file_path: String) {
                 msg.push_str("\tsub rax, rbx\n");
                 msg.push_str("\tpush rax\n");
                 stack_all -= 8;
+                seg_fault -= 1;
             }
             Tokens::Div => {
                 tok += 1;
@@ -173,6 +176,7 @@ fn build_program(tokens: &Vec<Tokens>, file_path: String) {
                 msg.push_str("\tdiv rbx\n");
                 msg.push_str("\tpush rax\n");
                 stack_all -= 8;
+                seg_fault -= 1;
             }
             Tokens::IDiv => {
                 tok += 1;
@@ -183,6 +187,7 @@ fn build_program(tokens: &Vec<Tokens>, file_path: String) {
                 msg.push_str("\tidiv rbx\n");
                 msg.push_str("\tpush rax\n");
                 stack_all -= 8;
+                seg_fault -= 1;
             }
             Tokens::Mul => {
                 tok += 1;
@@ -193,6 +198,7 @@ fn build_program(tokens: &Vec<Tokens>, file_path: String) {
                 msg.push_str("\tmul rbx\n");
                 msg.push_str("\tpush rax\n");
                 stack_all -= 8;
+                seg_fault -= 1;
             }
             Tokens::IMul => {
                 tok += 1;
@@ -203,6 +209,7 @@ fn build_program(tokens: &Vec<Tokens>, file_path: String) {
                 msg.push_str("\timul rbx\n");
                 msg.push_str("\tpush rax\n");
                 stack_all -= 8;
+                seg_fault -= 1;
             }
             Tokens::Mod => {
                 tok += 1;
@@ -213,6 +220,7 @@ fn build_program(tokens: &Vec<Tokens>, file_path: String) {
                 msg.push_str("\tidiv rbx\n");
                 msg.push_str("\tpush rdx\n");
                 stack_all -= 8;
+                seg_fault -= 1;
             }
             Tokens::Swap => {
                 tok += 1;
@@ -228,6 +236,7 @@ fn build_program(tokens: &Vec<Tokens>, file_path: String) {
                 msg.push_str("\tmov rax, [rsp]\n");
                 msg.push_str("\tpush rax\n");
                 stack_all += 8;
+                seg_fault -= 1;
             }
             Tokens::Push => {
                 tok += 1;
@@ -259,22 +268,34 @@ fn build_program(tokens: &Vec<Tokens>, file_path: String) {
 
                 index += 1;
                 stack_all += 8;
+                seg_fault += 1;
             }
             Tokens::Pop => {
                 tok += 1;
                 msg.push_str("\tpop rbx\n");
                 stack_all -= 8;
+                seg_fault -= 1;
             }
             Tokens::Newline => {
                 line += 1;
                 tok = 0;
             }
             Tokens::PrintInt => {
-                stack_all -= 8;
                 if stack_all % 16 != 0 {
                     eprintln!("The stack may be misalligned and the program may go into a seg fault for this print call.\nWarinig emitted at token: {} at line: {}", tok + 1, line);
                 }
-                msg.push_str(&format!("\tmov rdi, fmt\n\tpop rsi\n\txor eax, eax\n\tcall printf\n"))
+                msg.push_str(&format!("\tmov rdi, fmt\n"));
+                msg.push_str(&format!("\tmov rsi, [rsp]\n"));
+                msg.push_str(&format!("\txor eax, eax\n"));
+                msg.push_str(&format!("\tcall printf\n"));
+
+                if seg_fault % 2 == 0{
+                    msg.push_str(&format!("\tadd rsp, 16\n"));
+                } else {
+                    msg.push_str(&format!("\tadd rsp, 8\n"));
+                }
+                stack_all -= 8;
+                seg_fault += 1;
             }
             _ => {
                 eprintln!("Unexpected token {:?} at token: {} at line {}", c, tok + 1, line);
