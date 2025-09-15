@@ -5,10 +5,11 @@ section ".text" executable
 public main
 extrn printf
 main:
-	push 2
+	push 69
 	mov rdi, fmt
-	mov rsi, [rsp]
+	pop rsi
 	xor eax, eax
+	sub rsp, 8
 	call printf
 	add rsp, 8
 	xor eax, eax
