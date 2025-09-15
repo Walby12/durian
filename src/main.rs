@@ -26,6 +26,7 @@ enum Tokens {
     Label,
     Ident(usize),
     Jmp,
+    JmpE, 
 }
 
 struct Interner {
@@ -88,6 +89,7 @@ fn tokenize(src: String, intern: &mut Interner) -> Vec<Tokens> {
                     "putchar" => { tokens.push(Tokens::PutChar); token += 1; }
                     "label" => { tokens.push(Tokens::Label); token += 1; }
                     "jmp" => { tokens.push(Tokens::Jmp); token += 1; }
+                    "je" => { tokens.push(Tokens::JmpE); token += 1; }
                     _ => { 
                         let id = intern.intern(string);
                         tokens.push(Tokens::Ident(id));
@@ -255,7 +257,7 @@ fn build_program(tokens: &Vec<Tokens>, file_path: String, intern: &Interner) {
                 stack_all += 8;
             }
             Tokens::Push => {
-                tok += 1;
+                tok += 2;
 
                 let r = match peek_r(&tokens, &index) {
                     Ok(t) => t,
@@ -295,6 +297,7 @@ fn build_program(tokens: &Vec<Tokens>, file_path: String, intern: &Interner) {
                 tok = 0;
             }
             Tokens::PrintInt => {
+                tok += 1;
                 stack_all -= 8;
                 if stack_all % 16 != 0 {
                     eprintln!("The stack is disalligned and the program will go in seg fault on this printint op.\nError occurred at token: {} at line: {}", tok + 1, line);
@@ -309,6 +312,7 @@ fn build_program(tokens: &Vec<Tokens>, file_path: String, intern: &Interner) {
                 msg.push_str("\tadd rsp, 8\n");
             }
             Tokens::PutChar => {
+                tok += 1;
                 stack_all -= 8;
                 if stack_all % 16 != 0 {
                     eprintln!("The stack is disalligned and the program will go in seg fault on this putchar op.\nError occurred at token: {} at line: {}", tok + 1, line);
@@ -349,7 +353,7 @@ fn build_program(tokens: &Vec<Tokens>, file_path: String, intern: &Interner) {
                 index += 1;
             }
             Tokens::Jmp => {
-                tok += 1;
+                tok += 2;
 
                 let r = match peek_r(&tokens, &index) {
                     Ok(t) => t,
@@ -377,8 +381,65 @@ fn build_program(tokens: &Vec<Tokens>, file_path: String, intern: &Interner) {
                 }
                 index += 1;
             }
+            Tokens::JmpE => {
+                tok += 2;
+                
+                let r1 = match peek_r(&tokens, &index) {
+                    Ok(t) => t,
+                    Err(_) => {
+                        eprintln!(
+                            "Tried to peek the token next to the push op at token {} at line {} but went out of bounds",
+                            tok + 1, line
+                        );
+                        exit(1);
+                    }
+                };
+
+                if !matches!(r1, Tokens::Int(..)) {
+                    eprintln!(
+                        "Error got token: {:?}, but expected an Int.\nError occurred at token {} at line {}",
+                        r1,
+                        tok + 1,
+                        line
+                    );
+                    exit(1);
+                }
+
+                let r2 = match peek_r(&tokens, &(index + 1)) {
+                    Ok(t) => t,
+                    Err(_) => {
+                        eprintln!(
+                            "Tried to peek the token next to the push op at token {} at line {} but went out of bounds",
+                            tok + 1, line
+                        );
+                        exit(1);
+                    }
+                };
+
+                if !matches!(r2, Tokens::Ident(..)) {
+                    eprintln!(
+                        "Error got token: {:?}, but expected an Identifier.\nError occurred at token {} at line {}",
+                        r2,
+                        tok + 1,
+                        line
+                    );
+                    exit(1);
+                }
+
+                if let Tokens::Int(n) = r1 {
+                    msg.push_str(&format!("\tpop rax\n\tcmp rax, {}\n", n));
+                }
+                if let Tokens::Ident(n) = r2 {
+                    msg.push_str(&format!("\tje {}\n", intern.resolve(n)));
+                }
+                index += 2;
+            }
             _ => {
-                eprintln!("Unexpected token {:?} at token: {} at line {}", c, tok + 1, line);
+                if let Tokens::Ident(n) = c {
+                    eprintln!("Unexpected token {:?} at token: {} at line {}", intern.resolve(n), tok + 1, line);
+                } else {
+                    eprintln!("Unexpected token {:?} at token: {} at line {}", c, tok + 1, line);
+                }
                 exit(1);
             }
         }

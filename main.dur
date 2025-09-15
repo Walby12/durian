@@ -1,1 +1,6 @@
-label u push 69 putchar jmp u
+label u 
+  push 69
+  putchar
+  push 0
+  je 0 a
+label a

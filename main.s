@@ -12,7 +12,11 @@ u:
 	sub rsp, 8
 	call putchar
 	add rsp, 8
-jmp u
+	push 0
+	pop rax
+	cmp rax, 0
+	je a
+a:
 	xor eax, eax
 	ret
 
