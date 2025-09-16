@@ -26,7 +26,10 @@ enum Tokens {
     Label,
     Ident(usize),
     Jmp,
-    JmpE, 
+    JmpE,
+    EQ,
+    Ret,
+    Rax,
 }
 
 struct Interner {
@@ -90,6 +93,9 @@ fn tokenize(src: String, intern: &mut Interner) -> Vec<Tokens> {
                     "label" => { tokens.push(Tokens::Label); token += 1; }
                     "jmp" => { tokens.push(Tokens::Jmp); token += 1; }
                     "je" => { tokens.push(Tokens::JmpE); token += 1; }
+                    "eq" => { tokens.push(Tokens::EQ); token += 1; }
+                    "ret" => { tokens.push(Tokens::Ret); token += 1; }
+                    "rax" => { tokens.push(Tokens::Rax); token += 1; }
                     _ => { 
                         let id = intern.intern(string);
                         tokens.push(Tokens::Ident(id));
@@ -270,9 +276,9 @@ fn build_program(tokens: &Vec<Tokens>, file_path: String, intern: &Interner) {
                     }
                 };
 
-                if !matches!(r, Tokens::Int(..)) {
+                if !matches!(r, Tokens::Int(..)) && !matches!(r, Tokens::Rax) {
                     eprintln!(
-                        "Error got token: {:?}, but expected an Int.\nError occurred at token {} at line {}",
+                        "Error got token: {:?}, but expected an Int or a register.\nError occurred at token {} at line {}",
                         r,
                         tok + 1,
                         line
@@ -282,6 +288,10 @@ fn build_program(tokens: &Vec<Tokens>, file_path: String, intern: &Interner) {
 
                 if let Tokens::Int(n) = r {
                     msg.push_str(&format!("\tpush {}\n", n));
+                }
+                
+                if let Tokens::Rax = r {
+                    msg.push_str(&format!("\tpush rax\n"));
                 }
 
                 index += 1;
@@ -306,10 +316,7 @@ fn build_program(tokens: &Vec<Tokens>, file_path: String, intern: &Interner) {
                 msg.push_str("\tmov rdi, fmt\n");
                 msg.push_str("\tpop rsi\n");
                 msg.push_str("\txor eax, eax\n");
-
-                msg.push_str("\tsub rsp, 8\n");
                 msg.push_str("\tcall printf\n");
-                msg.push_str("\tadd rsp, 8\n");
             }
             Tokens::PutChar => {
                 tok += 1;
@@ -319,12 +326,12 @@ fn build_program(tokens: &Vec<Tokens>, file_path: String, intern: &Interner) {
                 }
 
                 msg.push_str("\tpop rdi\n");
-                msg.push_str("\tsub rsp, 8\n");
                 msg.push_str("\tcall putchar\n");
-                msg.push_str("\tadd rsp, 8\n");
+                msg.push_str("\tpush rsi\n");
+
             }
             Tokens::Label => {
-                tok += 1;
+                tok += 2;
 
                 let r = match peek_r(&tokens, &index) {
                     Ok(t) => t,
@@ -382,7 +389,7 @@ fn build_program(tokens: &Vec<Tokens>, file_path: String, intern: &Interner) {
                 index += 1;
             }
             Tokens::JmpE => {
-                tok += 2;
+                tok += 3;
                 
                 let r1 = match peek_r(&tokens, &index) {
                     Ok(t) => t,
@@ -427,12 +434,53 @@ fn build_program(tokens: &Vec<Tokens>, file_path: String, intern: &Interner) {
                 }
 
                 if let Tokens::Int(n) = r1 {
-                    msg.push_str(&format!("\tpop rax\n\tcmp rax, {}\n", n));
+                    msg.push_str(&format!("\tcmp rsi, {}\n", n));
                 }
                 if let Tokens::Ident(n) = r2 {
                     msg.push_str(&format!("\tje {}\n", intern.resolve(n)));
                 }
                 index += 2;
+            }
+            Tokens::EQ => {
+                tok += 1;
+
+                msg.push_str(&format!("\tpop rax\n"));
+                msg.push_str(&format!("\tpop rbx\n"));
+                msg.push_str(&format!("\tcmp rax, rbx\n"));
+                msg.push_str(&format!("\tsete al\n"));
+                msg.push_str(&format!("\tmovzx rax, al\n"));
+                msg.push_str(&format!("\tpush rax\n"));
+                stack_all -= 8;
+
+            }
+            Tokens::Ret => {
+                tok += 2;
+
+                let r = match peek_r(&tokens, &index) {
+                    Ok(t) => t,
+                    Err(_) => {
+                        eprintln!(
+                            "Tried to peek the token next to the push op at token {} at line {} but went out of bounds",
+                            tok + 1, line
+                        );
+                        exit(1);
+                    }
+                };
+
+                if !matches!(r, Tokens::Int(..)) {
+                    eprintln!(
+                        "Error got token: {:?}, but expected an Int.\nError occurred at token {} at line {}",
+                        r,
+                        tok + 1,
+                        line
+                    );
+                    exit(1);
+                }
+
+                if let Tokens::Int(n) = r {
+                    msg.push_str(&format!("\tmov rax, {}\n\tret\n", n));
+                }
+                index += 1;
             }
             _ => {
                 if let Tokens::Ident(n) = c {

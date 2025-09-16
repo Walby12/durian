@@ -6,17 +6,22 @@ public main
 extrn printf
 extrn putchar
 main:
-u:
-	push 69
-	pop rdi
-	sub rsp, 8
-	call putchar
-	add rsp, 8
-	push 0
+lp:
+	push 1
+	push 1
 	pop rax
-	cmp rax, 0
-	je a
+	pop rbx
+	add rax, rbx
+	push rax
+	mov rdi, fmt
+	pop rsi
+	xor eax, eax
+	call printf
+	cmp rsi, 2
+	je lp
 a:
+	mov rax, 1
+	ret
 	xor eax, eax
 	ret
 

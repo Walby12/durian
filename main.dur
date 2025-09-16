@@ -1,6 +1,8 @@
-label u 
-  push 69
-  putchar
-  push 0
-  je 0 a
+label lp
+  push 1
+  push 1
+  add
+  printint
+  je 2 lp
 label a
+  ret 1
